@@ -1,41 +1,49 @@
 #!/bin/bash
 
-echo "🚀 Open-Cognitive OS: Çekirdek Başlatılıyor (Release Mode)..."
+clear
 echo "================================================================="
+echo "🚀 OPEN-COGNITIVE OS BOOT SEQUENCE"
+echo "================================================================="
+LOG_FILE="/tmp/cog-kernel.log"
+echo "Kernel logları şuraya yönlendirildi: $LOG_FILE"
+echo "--- OS BOOT ---" > $LOG_FILE
 
-# 1. WASM Araçlarını Derle (Release Mode)
-echo "[1/4] WASM Sandbox Araçları donanım seviyesinde derleniyor..."
+echo "[1/4] WASM Sandbox Araçları derleniyor..."
 cd ~/open-cognitive/tool-wasi-sdk
-rustup target add wasm32-unknown-unknown > /dev/null 2>&1
-cargo build --target wasm32-unknown-unknown --release -q
-echo "  -> OK: tool_wasi_sdk.wasm hazır."
+cargo build --target wasm32-unknown-unknown --release -q >> $LOG_FILE 2>&1
 
-# 2. Neural Engine (Sistem 1) Başlat
-echo "[2/4] Nöral Motor (FPU) başlatılıyor..."
+echo "[2/4] Nöral Motor (System 1) belleğe yükleniyor..."
 cd ~/open-cognitive/neural-engine
-cargo run --release --bin neural_engine -q &
+cargo run --release -q >> $LOG_FILE 2>&1 &
 PID_NEURAL=$!
 
-# 3. Sandbox (Sistem 3) Başlat
 echo "[3/4] Güvenli Yürütme Ortamı (WASM) başlatılıyor..."
 cd ~/open-cognitive/safe-execution-env
-# Not: Yolu Release olarak değiştirdik!
-sed -i 's/debug/release/g' src/main.rs
-cargo run --release -q &
+cargo run --release -q >> $LOG_FILE 2>&1 &
 PID_SANDBOX=$!
 
-sleep 1 
+sleep 1
 
-# 4. Logic Gate Core (Sistem 2) Başlat
-echo "[4/4] Bilişsel Mantık Çekirdeği (CPU) başlatılıyor..."
+echo "[4/4] Bilişsel Mantık Çekirdeği (System 2) başlatılıyor..."
 cd ~/open-cognitive/logic-gate-core
-cargo run --release -q &
+cargo run --release -q >> $LOG_FILE 2>&1 &
 PID_LOGIC=$!
 
 echo "================================================================="
-echo "✅ SİSTEM HAZIR VE DİNLİYOR! (Işık Hızında - Release)"
-echo "Sistemi kapatmak için bu ekranda CTRL+C tuşuna basabilirsiniz."
-echo "================================================================="
+echo "✅ Çekirdek (Kernel) hazır. Kullanıcı alanına (User Space) geçiliyor..."
+sleep 2
 
-trap "echo -e '\n🛑 Kapatma sinyali alındı. Tüm çekirdekler durduruluyor...'; kill $PID_NEURAL $PID_SANDBOX $PID_LOGIC; exit" INT
-wait
+# Acil durumlar için (Kullanıcı CTRL+C yaparsa) tüm arka plan işlemlerini öldür
+trap "echo -e '\n🛑 Acil Kapatma. Sistem durduruluyor...'; kill $PID_NEURAL $PID_SANDBOX $PID_LOGIC 2>/dev/null; exit" INT
+
+# --- KULLANICI ARAYÜZÜ (CLI) ÖN PLANDA BAŞLATILIYOR ---
+cd ~/open-cognitive/cognitive-cli
+# -q parametresi "Compiling..." yazılarını gizler, temiz başlar
+cargo run --release -q
+
+# --- KULLANICI CLI'DAN ÇIKTIĞINDA BURAYA DÜŞER ---
+echo ""
+echo "🛑 Shell sonlandı. Donanım ve servisler kapatılıyor..."
+kill $PID_NEURAL $PID_SANDBOX $PID_LOGIC 2>/dev/null
+wait $PID_NEURAL $PID_SANDBOX $PID_LOGIC 2>/dev/null
+echo "✅ Sistem güvenle kapatıldı."
